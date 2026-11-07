@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KVM Console</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<main class="stage">
+  <section class="monitor" aria-label="Shared monitor">
+    <div class="bezel">
+      <div id="screens" class="screens"></div>
+      <div id="flash" class="flash" aria-hidden="true"></div>
+      <div id="osd" class="osd" role="status"></div>
+    </div>
+    <div class="bezel-foot"><span id="monitor-label"></span><i class="power"></i></div>
+  </section>
+
+  <section class="topology" aria-label="KVM topology">
+    <svg id="cables" class="cables" aria-hidden="true"></svg>
+
+    <div id="workstations" class="workstations"></div>
+
+    <div id="kvm" class="kvm">
+      <div class="kvm-name">KVM switch</div>
+      <div id="leds" class="leds"></div>
+    </div>
+
+    <div id="peripherals" class="peripherals">
+      <div class="peripheral" id="p-monitor">
+        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M9 20h6M12 16v4"/></svg>
+        <span>Monitor</span>
+      </div>
+      <div class="peripheral" id="p-keyboard">
+        <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="10" rx="1.5"/><path d="M6 11h.01M10 11h.01M14 11h.01M18 11h.01M8 14h8"/></svg>
+        <span>Keyboard</span>
+      </div>
+      <div class="peripheral" id="p-mouse">
+        <svg viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="18" rx="5"/><path d="M12 7v3"/></svg>
+        <span>Mouse</span>
+      </div>
+    </div>
+  </section>
+</main>
+</body>
+</html>

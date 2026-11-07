@@ -1,0 +1,9 @@
+#!/bin/sh
+. /usr/local/lib/kvm-demo/place-window.sh
+
+tmux -f "$HOME/.tmux.conf" new-session -d -s dev -x 110 -y 30 "$HOME/demo-build"
+tmux split-window -t dev -v -l 11 htop
+tmux select-pane -t dev:0.0
+xfce4-terminal --title="DEV-01 terminal" --hide-menubar --font="DejaVu Sans Mono 13" \
+  -x tmux attach -t dev &
+place_window "DEV-01 terminal"

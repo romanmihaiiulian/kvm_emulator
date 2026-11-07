@@ -1,0 +1,48 @@
+#!/bin/bash
+# Boots any VMs not already running, starts the console and opens it.
+source "$(dirname "$0")/lib.sh"
+
+command -v qemu-system-aarch64 >/dev/null || die "QEMU is missing. Run scripts/install first."
+for role in "${ROLES[@]}"; do
+  [ -f "$IMAGES/$role.qcow2" ] || die "no disk for $role. Run scripts/setup or scripts/install first."
+done
+mkdir -p "$RUN" "$ROOT/vm/logs"
+
+timezone="$(readlink /etc/localtime | sed 's|.*/zoneinfo/||')"
+
+start_vm() {
+  local role="$1" port
+  port="$(role_port "$role")"
+  pid_alive "$RUN/$role.pid" && { echo "$role is already running"; return; }
+
+  # The overlay holds whatever happens during the demo. scripts/reset deletes it.
+  if [ ! -f "$RUN/$role.qcow2" ]; then
+    (cd "$RUN" && qemu-img create -q -f qcow2 -F qcow2 -b "../images/$role.qcow2" "$role.qcow2")
+  fi
+  # shellcheck disable=SC2046
+  qemu-system-aarch64 $(qemu_common) -name "$role" -bios "$(firmware)" \
+    -drive "if=virtio,file=$RUN/$role.qcow2,format=qcow2" \
+    -nic none -display none \
+    -vnc "127.0.0.1:$((10 + port)),websocket=$(role_ws_port "$role")" \
+    -fw_cfg "name=opt/kvm-demo/timezone,string=$timezone" \
+    -qmp "unix:$RUN/$role.qmp,server,nowait" \
+    -serial "file:$ROOT/vm/logs/$role.log" \
+    -pidfile "$RUN/$role.pid" -daemonize
+  echo "$role booting (port $port)"
+}
+
+for role in "${ROLES[@]}"; do
+  start_vm "$role"
+done
+
+if ! pid_alive "$RUN/server.pid"; then
+  nohup node "$ROOT/server.mjs" > "$ROOT/vm/logs/server.log" 2>&1 &
+  echo $! > "$RUN/server.pid"
+  # Keep the Mac and its display awake for as long as the console is running.
+  nohup caffeinate -di -w "$(cat "$RUN/server.pid")" >/dev/null 2>&1 &
+fi
+
+log "Console: http://127.0.0.1:$WEB_PORT/  (the desktops take about a minute to settle)"
+[ "${1:-}" = "--no-open" ] && exit 0
+# Chrome is the browser the console was tested in, so prefer it over the default.
+open -a "Google Chrome" "http://127.0.0.1:$WEB_PORT/" 2>/dev/null || open "http://127.0.0.1:$WEB_PORT/"

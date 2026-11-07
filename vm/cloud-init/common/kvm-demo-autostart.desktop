@@ -1,0 +1,5 @@
+[Desktop Entry]
+Type=Application
+Name=KVM demo workstation
+Exec=/usr/local/lib/kvm-demo/role-start
+X-GNOME-Autostart-enabled=true

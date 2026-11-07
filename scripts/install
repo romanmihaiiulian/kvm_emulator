@@ -1,0 +1,17 @@
+#!/bin/bash
+# Run on the demo Mac, with internet: ./install kvm_emulator.tar.gz [target folder]
+# Standalone on purpose, because the rest of the project is inside the archive.
+set -euo pipefail
+
+archive="${1:?usage: install <archive> [target folder]}"
+target="${2:-$HOME/Developer}"
+
+[ "$(uname -m)" = arm64 ] || { echo "error: the demo Mac must be Apple Silicon" >&2; exit 1; }
+command -v brew >/dev/null || { echo "error: Homebrew is required: https://brew.sh" >&2; exit 1; }
+command -v qemu-system-aarch64 >/dev/null || brew install qemu
+command -v node >/dev/null || brew install node
+
+mkdir -p "$target"
+tar -xzf "$archive" -C "$target"
+"$target/kvm_emulator/scripts/preflight" || true
+echo "Installed in $target/kvm_emulator. Next: scripts/start, then rehearse."

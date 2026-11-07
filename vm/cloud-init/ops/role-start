@@ -1,0 +1,11 @@
+#!/bin/sh
+. /usr/local/lib/kvm-demo/place-window.sh
+
+cd "$HOME/dashboard"
+python3 server.py &
+
+# Firefox doesn't retry a failed first load, so wait until the server answers.
+until python3 -c "import socket; socket.create_connection(('127.0.0.1', 8000), 1)" 2>/dev/null; do
+  sleep 0.5
+done
+exec firefox-esr --profile "$HOME/.firefox-demo" --kiosk http://127.0.0.1:8000/

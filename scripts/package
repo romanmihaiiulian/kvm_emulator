@@ -1,0 +1,20 @@
+#!/bin/bash
+# Bundles the project and provisioned disks into one archive for the demo Mac.
+source "$(dirname "$0")/lib.sh"
+
+for f in base "${ROLES[@]}"; do
+  [ -f "$IMAGES/$f.qcow2" ] || die "$f.qcow2 is missing. Run scripts/setup first."
+done
+mkdir -p "$ROOT/dist"
+out="$ROOT/dist/kvm_emulator.tar.gz"
+
+log "Writing $out (this takes a few minutes)"
+COPYFILE_DISABLE=1 tar -czf "$out" -C "$(dirname "$ROOT")" \
+  --exclude "$(basename "$ROOT")/dist" \
+  --exclude "$(basename "$ROOT")/vm/run" \
+  --exclude "$(basename "$ROOT")/vm/logs" \
+  --exclude "$(basename "$ROOT")/vm/images/$DEBIAN_IMAGE" \
+  --exclude "$(basename "$ROOT")/vm/images/SHA512SUMS" \
+  "$(basename "$ROOT")"
+du -h "$out"
+log "Copy that archive and scripts/install to the demo Mac, then: ./install kvm_emulator.tar.gz"

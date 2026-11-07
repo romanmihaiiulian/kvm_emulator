@@ -1,0 +1,44 @@
+#!/bin/bash
+# Stops the console and VMs. Overlays are kept; use scripts/reset to discard them.
+source "$(dirname "$0")/lib.sh"
+
+POWERDOWN_WAIT=30  # seconds a guest gets to shut down before it is forced
+
+stop_server() {
+  if pid_alive "$RUN/server.pid"; then
+    kill "$(cat "$RUN/server.pid")"
+    echo "stopped console"
+  fi
+  rm -f "$RUN/server.pid"
+}
+
+# Asks the guest to shut itself down, the same as pressing its power button.
+request_powerdown() {
+  printf '%s\n%s\n' '{"execute":"qmp_capabilities"}' '{"execute":"system_powerdown"}' \
+    | nc -U -w 1 "$RUN/$1.qmp" >/dev/null 2>&1 || true
+}
+
+wait_for_exit() {
+  local role="$1" waited=0
+  while pid_alive "$RUN/$role.pid"; do
+    if [ "$waited" -ge "$POWERDOWN_WAIT" ]; then
+      echo "$role didn't shut down in ${POWERDOWN_WAIT}s, forcing it"
+      kill -9 "$(cat "$RUN/$role.pid")"
+      return
+    fi
+    sleep 1
+    waited=$((waited + 1))
+    # A guest occasionally ignores the first request, so ask again.
+    [ $((waited % 10)) -ne 0 ] || request_powerdown "$role"
+  done
+  echo "stopped $role (${waited}s)"
+}
+
+stop_server
+for role in "${ROLES[@]}"; do
+  pid_alive "$RUN/$role.pid" && request_powerdown "$role"
+done
+for role in "${ROLES[@]}"; do
+  wait_for_exit "$role"
+  rm -f "$RUN/$role.pid" "$RUN/$role.qmp"
+done

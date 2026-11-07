@@ -1,0 +1,79 @@
+#!/bin/bash
+# Run once on the build Mac, with internet. Safe to re-run: finished steps are skipped.
+source "$(dirname "$0")/lib.sh"
+
+[ "$(uname -m)" = arm64 ] || die "this project needs an Apple Silicon Mac"
+command -v brew >/dev/null || die "Homebrew is required: https://brew.sh"
+command -v qemu-system-aarch64 >/dev/null || { log "Installing QEMU"; brew install qemu; }
+
+mkdir -p "$IMAGES" "$ROOT/vm/logs"
+
+if [ ! -f "$IMAGES/$DEBIAN_IMAGE" ]; then
+  log "Downloading the Debian image"
+  curl -fL --output "$IMAGES/SHA512SUMS" "$DEBIAN_URL/SHA512SUMS"
+  curl -fL --output "$IMAGES/$DEBIAN_IMAGE.part" "$DEBIAN_URL/$DEBIAN_IMAGE"
+  want="$(grep " $DEBIAN_IMAGE\$" "$IMAGES/SHA512SUMS" | cut -d' ' -f1)"
+  have="$(shasum -a 512 "$IMAGES/$DEBIAN_IMAGE.part" | cut -d' ' -f1)"
+  [ -n "$want" ] && [ "$want" = "$have" ] || die "the image failed its checksum"
+  mv "$IMAGES/$DEBIAN_IMAGE.part" "$IMAGES/$DEBIAN_IMAGE"
+fi
+
+# Builds a cloud-init seed ISO with a tar of common/ and the role's own folder.
+make_seed() {
+  local role="$1" dir
+  local folders=(common)
+  [ "$role" = base ] || folders+=("$role")
+  dir="$(mktemp -d)"
+  sed "s/ ROLE\"/ $role\"/" "$SEEDS/user-data" > "$dir/user-data"
+  printf 'instance-id: kvm-demo-%s\nlocal-hostname: %s\n' "$role" "$role" > "$dir/meta-data"
+  COPYFILE_DISABLE=1 tar -cf "$dir/payload.tar" -C "$SEEDS" "${folders[@]}"
+  rm -f "$IMAGES/seed-$role.iso"
+  hdiutil makehybrid -quiet -iso -joliet -default-volume-name cidata \
+    -o "$IMAGES/seed-$role.iso" "$dir"
+  rm -rf "$dir"
+}
+
+# provision <role> <disk> <network args>: boots until the guest powers itself off.
+provision() {
+  local role="$1" disk="$2" net="$3" limit="$4"
+  local log_file="$ROOT/vm/logs/provision-$role.log"
+  make_seed "$role"
+  rm -f "$log_file"
+  # shellcheck disable=SC2046
+  qemu-system-aarch64 $(qemu_common) -bios "$(firmware)" \
+    -drive "if=virtio,file=$disk,format=qcow2,discard=unmap" \
+    -drive "if=virtio,file=$IMAGES/seed-$role.iso,format=raw,readonly=on" \
+    $net -display none -serial "file:$log_file" &
+  local pid=$! waited=0
+  while kill -0 "$pid" 2>/dev/null; do
+    if [ "$waited" -ge "$limit" ]; then
+      kill "$pid"
+      die "provisioning $role timed out; see $log_file"
+    fi
+    sleep 5
+    waited=$((waited + 5))
+  done
+  rm -f "$IMAGES/seed-$role.iso"
+  # Anchored, so the "+ echo KVM_PROVISION_OK" trace line doesn't count as success.
+  grep -aq '^KVM_PROVISION_OK' "$log_file" || die "provisioning $role failed; see $log_file"
+}
+
+if [ ! -f "$IMAGES/base.qcow2" ]; then
+  log "Installing the desktop and apps into the base image (several minutes)"
+  rm -f "$IMAGES/base.tmp.qcow2"
+  cp "$IMAGES/$DEBIAN_IMAGE" "$IMAGES/base.tmp.qcow2"
+  qemu-img resize -q "$IMAGES/base.tmp.qcow2" 10G
+  provision base "$IMAGES/base.tmp.qcow2" "-nic user,model=virtio-net-pci" 1800
+  mv "$IMAGES/base.tmp.qcow2" "$IMAGES/base.qcow2"
+fi
+
+for role in "${ROLES[@]}"; do
+  [ ! -f "$IMAGES/$role.qcow2" ] || continue
+  log "Personalising workstation: $role"
+  # Run from inside the folder so the backing path stays relative and portable.
+  (cd "$IMAGES" && qemu-img create -q -f qcow2 -F qcow2 -b base.qcow2 "$role.tmp.qcow2")
+  provision "$role" "$IMAGES/$role.tmp.qcow2" "-nic none" 300
+  mv "$IMAGES/$role.tmp.qcow2" "$IMAGES/$role.qcow2"
+done
+
+log "Setup finished. Next: scripts/start"

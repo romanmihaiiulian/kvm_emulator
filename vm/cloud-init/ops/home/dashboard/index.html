@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>OPS-02 monitoring</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #06201a; color: #e6fff6; font-family: "DejaVu Sans", sans-serif; }
+  body { display: flex; flex-direction: column; }
+  header { display: flex; align-items: baseline; gap: 20px; padding: 14px 24px; background: #047857; }
+  header h1 { margin: 0; font-size: 40px; }
+  header span { font-size: 22px; }
+  #clock { margin-left: auto; font-size: 34px; font-weight: bold; font-variant-numeric: tabular-nums; }
+  main { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 12px; padding: 12px; }
+  section { min-height: 0; display: flex; flex-direction: column; padding: 10px 14px; background: #0b332a; border-radius: 8px; }
+  h2 { margin: 0; font-size: 18px; font-weight: normal; display: flex; justify-content: space-between; }
+  h2 b { font-size: 26px; font-variant-numeric: tabular-nums; }
+  small { opacity: .7; font-size: 13px; }
+  canvas { flex: 1; min-height: 0; width: 100%; }
+</style>
+</head>
+<body>
+<header><h1>OPS-02</h1><span>Port 2 · Monitoring</span><div id="clock"></div></header>
+<main>
+  <section><h2>CPU <b id="cpu-v"></b></h2><canvas id="cpu"></canvas></section>
+  <section><h2>Memory <b id="mem-v"></b></h2><canvas id="mem"></canvas></section>
+  <section><h2><span>Requests/s <small>simulated traffic</small></span> <b id="req-v"></b></h2><canvas id="req"></canvas></section>
+  <section><h2><span>Samples collected <small>since boot</small></span> <b id="count-v"></b></h2><canvas id="count"></canvas></section>
+</main>
+<script>
+const HISTORY = 120;
+const series = { cpu: [], mem: [], req: [], count: [] };
+let samples = 0;
+
+function draw(name, color, max) {
+  const canvas = document.getElementById(name);
+  const w = canvas.width = canvas.clientWidth;
+  const h = canvas.height = canvas.clientHeight;
+  const ctx = canvas.getContext("2d");
+  const values = series[name];
+  const top = max || Math.max(...values, 1) * 1.1;
+  ctx.beginPath();
+  values.forEach((v, i) => {
+    const x = w - (values.length - 1 - i) * (w / (HISTORY - 1));
+    const y = h - (v / top) * (h - 4) - 2;
+    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+  });
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 3;
+  ctx.stroke();
+}
+
+function push(name, value) {
+  series[name].push(value);
+  if (series[name].length > HISTORY) series[name].shift();
+}
+
+async function tick() {
+  document.getElementById("clock").textContent = new Date().toLocaleTimeString("en-GB");
+  try {
+    const m = await (await fetch("/metrics")).json();
+    samples += 1;
+    // A slow wave plus noise, so the chart moves visibly on an otherwise idle VM.
+    const t = Date.now() / 1000;
+    const req = 420 + 180 * Math.sin(t / 9) + 90 * Math.sin(t / 2.3) + Math.random() * 50;
+    push("cpu", m.cpu); push("mem", m.mem); push("req", req); push("count", samples);
+    document.getElementById("cpu-v").textContent = m.cpu.toFixed(0) + "%";
+    document.getElementById("mem-v").textContent = m.mem.toFixed(0) + "%";
+    document.getElementById("req-v").textContent = req.toFixed(0);
+    document.getElementById("count-v").textContent = samples;
+    draw("cpu", "#34d399", 100); draw("mem", "#60a5fa", 100); draw("req", "#fbbf24"); draw("count", "#f472b6");
+  } catch (e) { /* the server is still starting; the next tick retries */ }
+}
+setInterval(tick, 1000);
+tick();
+</script>
+</body>
+</html>

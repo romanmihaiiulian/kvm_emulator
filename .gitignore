@@ -1,0 +1,9 @@
+vm/images/
+vm/run/
+vm/logs/
+dist/
+
+# macOS and editors
+.DS_Store
+node_modules/
+*.swp

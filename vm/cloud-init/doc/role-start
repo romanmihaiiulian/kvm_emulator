@@ -1,0 +1,6 @@
+#!/bin/sh
+. /usr/local/lib/kvm-demo/place-window.sh
+
+soffice --writer --norestore --nologo --nolockcheck "$HOME/Documents/Quarterly-plan.fodt" &
+# LibreOffice draws its window 28px above the requested position, hence the larger y.
+place_window "Quarterly-plan" 120 560

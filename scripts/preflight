@@ -1,0 +1,63 @@
+#!/bin/bash
+# Checks this Mac and, if they are running, the VMs. Exits non-zero on any failure.
+source "$(dirname "$0")/lib.sh"
+set +e
+
+failures=0
+ok()   { printf '  ok    %s\n' "$*"; }
+warn() { printf '  warn  %s\n' "$*"; }
+bad()  { printf '  FAIL  %s\n' "$*"; failures=$((failures + 1)); }
+
+echo "Host"
+[ "$(uname -m)" = arm64 ] && ok "Apple Silicon: $(sysctl -n machdep.cpu.brand_string)" || bad "not Apple Silicon"
+[ "$(sysctl -n kern.hv_support)" = 1 ] && ok "hardware virtualization available" || bad "hardware virtualization unavailable"
+command -v qemu-system-aarch64 >/dev/null && ok "$(qemu-system-aarch64 --version | head -1)" || bad "QEMU not installed"
+command -v node >/dev/null && ok "node $(node -v)" || bad "node not installed"
+
+mem_gb=$(($(sysctl -n hw.memsize) / 1073741824))
+if [ "$mem_gb" -ge 16 ]; then ok "${mem_gb} GB RAM"
+elif [ "$mem_gb" -gt 8 ]; then warn "${mem_gb} GB RAM: rehearse with slides open"
+else warn "${mem_gb} GB RAM: likely too tight. Try KVM_VM_MEM=1536 and rehearse"; fi
+
+free_gb=$(df -g "$ROOT" | awk 'NR==2 {print $4}')
+[ "$free_gb" -ge 5 ] && ok "${free_gb} GB disk free" || bad "only ${free_gb} GB disk free"
+
+level="$(sysctl -n kern.memorystatus_vm_pressure_level 2>/dev/null)"
+case "$level" in
+  1) ok "memory pressure normal" ;;
+  2) warn "memory pressure elevated: close other apps" ;;
+  4) bad "memory pressure critical: close other apps" ;;
+  *) warn "memory pressure unknown: check Activity Monitor" ;;
+esac
+pgrep -xq "Docker Desktop" && warn "Docker Desktop is running: quit it to free memory"
+
+echo "Workstations"
+for role in "${ROLES[@]}"; do
+  [ -f "$IMAGES/$role.qcow2" ] && ok "$role disk present" || bad "$role disk missing"
+  ws="$(role_ws_port "$role")"
+  if ! pid_alive "$RUN/$role.pid"; then
+    warn "$role not running (scripts/start)"
+    continue
+  fi
+  # A healthy endpoint holds the socket open, so curl always ends on its timeout.
+  # Only the status code counts, not curl's exit code.
+  code="$(curl -s -m 1 -o /dev/null -w '%{http_code}' \
+    -H 'Connection: Upgrade' -H 'Upgrade: websocket' -H 'Sec-WebSocket-Version: 13' \
+    -H 'Sec-WebSocket-Key: a2J2bWRlbW9rdm1kZW1vMQ==' -H 'Sec-WebSocket-Protocol: binary' \
+    "http://127.0.0.1:$ws/")"
+  if [ "$code" = 101 ]; then
+    ok "$role answering on port $ws"
+  else
+    bad "$role running but not answering on port $ws"
+  fi
+done
+
+echo "Console"
+if pid_alive "$RUN/server.pid"; then
+  curl -fs -m 3 -o /dev/null "http://127.0.0.1:$WEB_PORT/" && ok "serving on port $WEB_PORT" || bad "not answering on port $WEB_PORT"
+else
+  warn "not running (scripts/start)"
+fi
+
+echo
+if [ "$failures" -eq 0 ]; then echo "Preflight passed."; else echo "Preflight: $failures failure(s)."; exit 1; fi

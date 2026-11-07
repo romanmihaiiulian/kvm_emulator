@@ -1,0 +1,10 @@
+#cloud-config
+# Used for every provisioning boot. ROLE is replaced by scripts/setup.
+users: []
+runcmd:
+  # The payload is a tar because Linux reads the ISO's file names without leading
+  # dots or capitals, which would break files like .tmux.conf and Documents/.
+  - [sh, -c, "mkdir -p /mnt/iso /mnt/seed && mount -o ro LABEL=cidata /mnt/iso && tar -xf /mnt/iso/payload.tar -C /mnt/seed && sh /mnt/seed/common/provision.sh ROLE"]
+power_state:
+  mode: poweroff
+  condition: true

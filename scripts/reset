@@ -1,0 +1,7 @@
+#!/bin/bash
+# Stops everything and discards demo changes, back to the provisioned state.
+source "$(dirname "$0")/lib.sh"
+
+"$ROOT/scripts/stop"
+rm -f "$RUN"/*.qcow2
+log "Reset done. Next: scripts/start"

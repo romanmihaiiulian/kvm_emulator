@@ -1,0 +1,14 @@
+#!/bin/bash
+# A simulated build. The steadily rising step counter is the point: come back to
+# this workstation and it has visibly carried on without you.
+modules=(auth-service billing-api event-router report-engine search-index web-frontend)
+tasks=(compiling linking testing packaging)
+step=0
+while true; do
+  step=$((step + 1))
+  module=${modules[RANDOM % ${#modules[@]}]}
+  task=${tasks[RANDOM % ${#tasks[@]}]}
+  printf '\033[1;36m[step %05d]\033[0m %s  %-10s %-16s \033[32mok\033[0m\n' \
+    "$step" "$(date +%H:%M:%S)" "$task" "$module"
+  sleep 1
+done
